@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "seminar-project-aegis",
+  "productName": "aegis",
   "version": "0.1.0",
-  "identifier": "com.luzca.seminar-project-aegis",
+  "identifier": "com.luzca.aegis",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "../build"
   },
   "app": {
     "windows": [
       {
-        "title": "seminar-project-aegis",
+        "title": "aegis",
         "width": 800,
         "height": 600
       }
