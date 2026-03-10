@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "aegis",
-  "version": "0.1.0",
-  "identifier": "com.luzca.aegis",
+  "productName": "Aegis",
+  "version": "0.1.1",
+  "identifier": "com.luzcabrera.aegis",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "aegis",
-        "width": 800,
-        "height": 600
+        "title": "Aegis",
+        "width": 1280,
+        "height": 720
       }
     ],
     "security": {
