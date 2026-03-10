@@ -1,6 +1,6 @@
 # 🛡️ Project Aegis
 
-**Project Aegis** is a high-performance Windows utility application designed specifically for shared gaming environments, computer labs, and esports arenas. 
+**Project Aegis** is a light-weight Windows utility application designed specifically for shared gaming environments, computer labs, and esports arenas. 
 
 Built with **Tauri, Svelte, and Rust**, Aegis provides a centralized dashboard to provision temporary user accounts, sanitize system credentials between players, and forcefully apply competitive hardware optimizations via the Windows API.
 
@@ -64,3 +64,6 @@ npm run tauri dev
 
 # Compile the final executable for production
 npm run tauri build
+```
+## 🎓 Credits
+Developed by **Luz Cabrera** Wayne State College, Computer Science & Computer Information Systems Built as a targeted solution for managing competitive integrity and system cleanliness in collegiate esports environments and public gaming dens.
