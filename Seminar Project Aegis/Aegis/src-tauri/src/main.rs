@@ -182,10 +182,24 @@ Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Valu
     }
 }
 
+#[tauri::command]
+fn logout_windows() -> Result<(), String> {
+    // The "/l" flag tells Windows to perform a graceful logoff for the current user
+    let output = Command::new("shutdown")
+        .args(["/l"])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![create_windows_account, sanitize_credentials, disable_mouse_acceleration])
+        .invoke_handler(tauri::generate_handler![create_windows_account, sanitize_credentials, disable_mouse_acceleration, logout_windows])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

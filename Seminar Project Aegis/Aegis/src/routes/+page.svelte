@@ -8,6 +8,7 @@
     let confirmPassword = '';
     let statusMessage = '';
     let isError = false;
+    let accountCreated = false;
     
     // Sanitization Variables
     /**
@@ -20,7 +21,7 @@
     let optimizationStatus = '';
 
 
-    async function handleCreateAccount() {
+async function handleCreateAccount() {
         if (!username || !password) {
             statusMessage = "Username and password cannot be empty.";
             isError = true;
@@ -34,10 +35,12 @@
 
         statusMessage = "Provisioning account...";
         isError = false;
+        accountCreated = false;
 
         try {
             const result = await invoke('create_windows_account', { username, password });
             statusMessage = result;
+            accountCreated = true; // <-- Flip the state to true on success
             
             // Clear fields on success
             username = '';
@@ -46,6 +49,16 @@
         } catch (error) {
             // @ts-ignore
             statusMessage = error;
+            isError = true;
+        }
+    }
+
+// New function to trigger the Windows logout
+    async function handleLogout() {
+        try {
+            await invoke('logout_windows');
+        } catch (error) {
+            statusMessage = `Logout failed: ${error}`;
             isError = true;
         }
     }
@@ -86,22 +99,29 @@
 
     <div class="form-group">
         <label for="username">New Username</label>
-        <input id="username" type="text" bind:value={username} placeholder="e.g., PlayerOne" />
+        <input id="username" type="text" bind:value={username} placeholder="e.g., PlayerOne" disabled={accountCreated} />
     </div>
 
     <div class="form-group">
         <label for="password">Password</label>
-        <input id="password" type="password" bind:value={password} />
+        <input id="password" type="password" bind:value={password} disabled={accountCreated} />
     </div>
 
     <div class="form-group">
         <label for="confirmPassword">Re-type Password</label>
-        <input id="confirmPassword" type="password" bind:value={confirmPassword} />
+        <input id="confirmPassword" type="password" bind:value={confirmPassword} disabled={accountCreated} />
     </div>
 
-    <button on:click={handleCreateAccount}>Create Account & Logout</button>
+    {#if accountCreated}
+        <div class="success-prompt">
+            <p>Account ready! Please log out to switch users.</p>
+            <button class="logout-btn" on:click={handleLogout}>Click here to Log Out</button>
+        </div>
+    {:else}
+        <button on:click={handleCreateAccount}>Create Account</button>
+    {/if}
 
-    {#if statusMessage}
+    {#if statusMessage && !accountCreated}
         <div class="status {isError ? 'error' : 'success'}">
             {statusMessage}
         </div>
@@ -148,6 +168,11 @@
         color: #f8f8f2;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
+    .success-prompt { margin-top: 1rem; padding: 1rem; background: #282a36; border: 2px solid #50fa7b; border-radius: 4px; text-align: center; }
+    .success-prompt p { color: #50fa7b; font-weight: bold; margin-bottom: 1rem; margin-top: 0; }
+    .logout-btn { background: #bd93f9; color: #282a36; width: 100%; }
+    .logout-btn:hover { background: #d6b4fc; }
+    
     .container { max-width: 400px; margin: 4rem auto; padding: 2rem; background: #282a36; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     .form-group { margin-bottom: 1.5rem; display: flex; flex-direction: column; }
     label { margin-bottom: 0.5rem; font-weight: bold; color: #8be9fd; }
