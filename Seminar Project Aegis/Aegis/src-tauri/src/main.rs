@@ -153,23 +153,22 @@ fn create_windows_account(username: &str, password: &str) -> Result<String, Stri
 
 #[tauri::command]
 fn disable_mouse_acceleration() -> Result<String, String> {
-    // This script changes the registry and uses C# to call SystemParametersInfo to apply it instantly
+    // 1. Explicitly changed [uint[]] to [System.UInt32[]] to bypass PowerShell type accelerator issues
+    // 2. Renamed class to "MouseFix" to prevent potential namespace conflicts
     let ps_script = r#"
-        $code = @'
-        using System.Runtime.InteropServices;
-        public class Mouse {
-            [DllImport("user32.dll")]
-            public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint[] pvParam, uint fWinIni);
-        }
-        '@
-        Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
-        Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseSpeed" -Value "0"
-        Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold1" -Value "0"
-        Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Value "0"
-        
-        # 0x0004 is SPI_SETMOUSE, 3 means update the user profile and broadcast the change
-        [Mouse]::SystemParametersInfo(0x0004, 0, [uint[]]@(0,0,0), 3)
-    "#;
+$code = @'
+using System.Runtime.InteropServices;
+public class MouseFix {
+    [DllImport("user32.dll")]
+    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint[] pvParam, uint fWinIni);
+}
+'@
+Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseSpeed" -Value "0"
+Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold1" -Value "0"
+Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Value "0"
+[MouseFix]::SystemParametersInfo(0x0004, 0, [System.UInt32[]]@(0,0,0), 3)
+"#;
 
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", ps_script])
@@ -183,61 +182,10 @@ fn disable_mouse_acceleration() -> Result<String, String> {
     }
 }
 
-#[tauri::command]
-fn set_display_resolution(width: u32, height: u32, hz: u32) -> Result<String, String> {
-    // Injects C# to call the native Windows EnumDisplaySettings and ChangeDisplaySettings APIs
-    let ps_script = format!(r#"
-        $code = @'
-        using System;
-        using System.Runtime.InteropServices;
-        public class Display {{
-            [StructLayout(LayoutKind.Sequential)]
-            public struct DEVMODE {{
-                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
-                public short dmSpecVersion; public short dmDriverVersion; public short dmSize; public short dmDriverExtra;
-                public int dmFields; public int dmPositionX; public int dmPositionY; public int dmDisplayOrientation;
-                public int dmDisplayFixedOutput; public short dmColor; public short dmDuplex; public short dmYResolution;
-                public short dmTTOption; public short dmCollate;
-                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
-                public short dmLogPixels; public int dmBitsPerPel; public int dmPelsWidth; public int dmPelsHeight;
-                public int dmDisplayFlags; public int dmDisplayFrequency;
-            }}
-            [DllImport("user32.dll")] public static extern int EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
-            [DllImport("user32.dll")] public static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags);
-            
-            public static int SetResolution(int w, int h, int freq) {{
-                DEVMODE dm = new DEVMODE();
-                dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
-                EnumDisplaySettings(null, -1, ref dm);
-                dm.dmPelsWidth = w;
-                dm.dmPelsHeight = h;
-                dm.dmDisplayFrequency = freq;
-                // Flags to update Width, Height, and Frequency
-                dm.dmFields = 0x00080000 | 0x00100000 | 0x00400000; 
-                return ChangeDisplaySettings(ref dm, 1);
-            }}
-        }}
-        '@
-        Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
-        $result = [Display]::SetResolution({}, {}, {})
-        if ($result -ne 0) {{ throw "Failed to change display settings. Code: $result" }}
-    "#, width, height, hz);
-
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &ps_script])
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(format!("Display forcefully set to {}x{} @ {}Hz", width, height, hz))
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![create_windows_account, sanitize_credentials, disable_mouse_acceleration, set_display_resolution])
+        .invoke_handler(tauri::generate_handler![create_windows_account, sanitize_credentials, disable_mouse_acceleration])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
