@@ -4,6 +4,111 @@
 use std::env;
 use std::fs;
 use std::process::Command;
+use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
+
+#[tauri::command]
+fn sanitize_credentials() -> Vec<String> {
+    let mut results = Vec::new();
+
+    let local_app_data = env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\".to_string());
+    let app_data = env::var("APPDATA").unwrap_or_else(|_| "C:\\".to_string());
+
+    // Define targets: (App Name, Process Name, Array of Paths to Token File/Folder)
+    let targets = vec![
+        (
+            "Discord",
+            "discord.exe",
+            vec![PathBuf::from(&app_data).join("discord").join("Local Storage").join("leveldb")],
+        ),
+        (
+            "Epic Games",
+            "EpicGamesLauncher.exe",
+            // Epic uses webcache folders to store the actual session token
+            vec![
+                // The Data folder holds the actual session/auth tokens
+                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("Data"),
+                // The Config folder holds the launcher preferences (auto-login, remember me, etc.)
+                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("Config"),
+                // Keeping webcache just to clear the store UI cache for the next user
+                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("webcache"),
+                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("webcache_4147"),
+                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("webcache_4430"),
+            ],
+        ),
+        (
+            "Steam",
+            "steam.exe",
+            vec![PathBuf::from("C:\\Program Files (x86)\\Steam\\config\\loginusers.vdf")],
+        ),
+        (
+            "Spotify",
+            "Spotify.exe",
+            vec![PathBuf::from(&local_app_data).join("Spotify").join("Users")],
+        ),
+        (
+            "Battle.net",
+            "Battle.net.exe",
+            vec![PathBuf::from(&app_data).join("Battle.net")],
+        ),
+        (
+            "Riot Games",
+            "RiotClientServices.exe",
+            vec![PathBuf::from(&local_app_data).join("Riot Games").join("Riot Client").join("Data").join("Sessions")],
+        ),
+    ];
+
+    // 1. First Pass: Kill all target processes
+    for (_, process, _) in &targets {
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/IM", process])
+            .output();
+            
+        // Explicitly kill EpicWebHelper just in case the tree kill misses the detached Chromium processes
+        if *process == "EpicGamesLauncher.exe" {
+             let _ = Command::new("taskkill")
+                .args(["/F", "/T", "/IM", "EpicWebHelper.exe"])
+                .output();
+        }
+    }
+
+    // 2. Give Windows a moment to physically release the file locks!
+    thread::sleep(Duration::from_millis(1500));
+
+    // 3. Second Pass: Attempt deletion
+    for (name, _, paths) in targets {
+        let mut path_found = false;
+        let mut has_error = false;
+        let mut error_msg = String::new();
+
+        for path in paths {
+            if path.exists() {
+                path_found = true;
+                let delete_result = if path.is_dir() {
+                    fs::remove_dir_all(&path)
+                } else {
+                    fs::remove_file(&path)
+                };
+
+                if let Err(e) = delete_result {
+                    has_error = true;
+                    error_msg = e.to_string();
+                }
+            }
+        }
+
+        if !path_found {
+            results.push(format!("⚠️ {} not found (already clean).", name));
+        } else if has_error {
+            results.push(format!("❌ {} failed to clear: {}", name, error_msg));
+        } else {
+            results.push(format!("✅ {} sanitized successfully.", name));
+        }
+    }
+
+    results
+}
 
 #[tauri::command]
 fn create_windows_account(username: &str, password: &str) -> Result<String, String> {
@@ -46,9 +151,93 @@ fn create_windows_account(username: &str, password: &str) -> Result<String, Stri
     }
 }
 
+#[tauri::command]
+fn disable_mouse_acceleration() -> Result<String, String> {
+    // This script changes the registry and uses C# to call SystemParametersInfo to apply it instantly
+    let ps_script = r#"
+        $code = @'
+        using System.Runtime.InteropServices;
+        public class Mouse {
+            [DllImport("user32.dll")]
+            public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, uint[] pvParam, uint fWinIni);
+        }
+        '@
+        Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseSpeed" -Value "0"
+        Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold1" -Value "0"
+        Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Value "0"
+        
+        # 0x0004 is SPI_SETMOUSE, 3 means update the user profile and broadcast the change
+        [Mouse]::SystemParametersInfo(0x0004, 0, [uint[]]@(0,0,0), 3)
+    "#;
+
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-Command", ps_script])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok("Enhanced pointer precision disabled successfully.".to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+fn set_display_resolution(width: u32, height: u32, hz: u32) -> Result<String, String> {
+    // Injects C# to call the native Windows EnumDisplaySettings and ChangeDisplaySettings APIs
+    let ps_script = format!(r#"
+        $code = @'
+        using System;
+        using System.Runtime.InteropServices;
+        public class Display {{
+            [StructLayout(LayoutKind.Sequential)]
+            public struct DEVMODE {{
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+                public short dmSpecVersion; public short dmDriverVersion; public short dmSize; public short dmDriverExtra;
+                public int dmFields; public int dmPositionX; public int dmPositionY; public int dmDisplayOrientation;
+                public int dmDisplayFixedOutput; public short dmColor; public short dmDuplex; public short dmYResolution;
+                public short dmTTOption; public short dmCollate;
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+                public short dmLogPixels; public int dmBitsPerPel; public int dmPelsWidth; public int dmPelsHeight;
+                public int dmDisplayFlags; public int dmDisplayFrequency;
+            }}
+            [DllImport("user32.dll")] public static extern int EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
+            [DllImport("user32.dll")] public static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags);
+            
+            public static int SetResolution(int w, int h, int freq) {{
+                DEVMODE dm = new DEVMODE();
+                dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                EnumDisplaySettings(null, -1, ref dm);
+                dm.dmPelsWidth = w;
+                dm.dmPelsHeight = h;
+                dm.dmDisplayFrequency = freq;
+                // Flags to update Width, Height, and Frequency
+                dm.dmFields = 0x00080000 | 0x00100000 | 0x00400000; 
+                return ChangeDisplaySettings(ref dm, 1);
+            }}
+        }}
+        '@
+        Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+        $result = [Display]::SetResolution({}, {}, {})
+        if ($result -ne 0) {{ throw "Failed to change display settings. Code: $result" }}
+    "#, width, height, hz);
+
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps_script])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(format!("Display forcefully set to {}x{} @ {}Hz", width, height, hz))
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![create_windows_account])
+        .invoke_handler(tauri::generate_handler![create_windows_account, sanitize_credentials, disable_mouse_acceleration, set_display_resolution])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
