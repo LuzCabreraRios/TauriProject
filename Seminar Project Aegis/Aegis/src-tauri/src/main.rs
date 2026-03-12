@@ -3,8 +3,8 @@
 
 use std::env;
 use std::fs;
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
@@ -20,7 +20,10 @@ fn sanitize_credentials() -> Vec<String> {
         (
             "Discord",
             "discord.exe",
-            vec![PathBuf::from(&app_data).join("discord").join("Local Storage").join("leveldb")],
+            vec![PathBuf::from(&app_data)
+                .join("discord")
+                .join("Local Storage")
+                .join("leveldb")],
         ),
         (
             "Epic Games",
@@ -28,19 +31,36 @@ fn sanitize_credentials() -> Vec<String> {
             // Epic uses webcache folders to store the actual session token
             vec![
                 // The Data folder holds the actual session/auth tokens
-                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("Data"),
+                PathBuf::from(&local_app_data)
+                    .join("EpicGamesLauncher")
+                    .join("Saved")
+                    .join("Data"),
                 // The Config folder holds the launcher preferences (auto-login, remember me, etc.)
-                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("Config"),
+                PathBuf::from(&local_app_data)
+                    .join("EpicGamesLauncher")
+                    .join("Saved")
+                    .join("Config"),
                 // Keeping webcache just to clear the store UI cache for the next user
-                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("webcache"),
-                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("webcache_4147"),
-                PathBuf::from(&local_app_data).join("EpicGamesLauncher").join("Saved").join("webcache_4430"),
+                PathBuf::from(&local_app_data)
+                    .join("EpicGamesLauncher")
+                    .join("Saved")
+                    .join("webcache"),
+                PathBuf::from(&local_app_data)
+                    .join("EpicGamesLauncher")
+                    .join("Saved")
+                    .join("webcache_4147"),
+                PathBuf::from(&local_app_data)
+                    .join("EpicGamesLauncher")
+                    .join("Saved")
+                    .join("webcache_4430"),
             ],
         ),
         (
             "Steam",
             "steam.exe",
-            vec![PathBuf::from("C:\\Program Files (x86)\\Steam\\config\\loginusers.vdf")],
+            vec![PathBuf::from(
+                "C:\\Program Files (x86)\\Steam\\config\\loginusers.vdf",
+            )],
         ),
         (
             "Spotify",
@@ -55,17 +75,27 @@ fn sanitize_credentials() -> Vec<String> {
         (
             "Riot Games",
             "RiotClientServices.exe",
-            vec![PathBuf::from(&local_app_data).join("Riot Games").join("Riot Client").join("Data").join("Sessions")],
+            vec![PathBuf::from(&local_app_data)
+                .join("Riot Games")
+                .join("Riot Client")
+                .join("Data")
+                .join("Sessions")],
         ),
         (
             "Google Chrome",
             "chrome.exe",
-            vec![PathBuf::from(&local_app_data).join("Google").join("Chrome").join("User Data")],
+            vec![PathBuf::from(&local_app_data)
+                .join("Google")
+                .join("Chrome")
+                .join("User Data")],
         ),
         (
             "Microsoft Edge",
             "msedge.exe",
-            vec![PathBuf::from(&local_app_data).join("Microsoft").join("Edge").join("User Data")],
+            vec![PathBuf::from(&local_app_data)
+                .join("Microsoft")
+                .join("Edge")
+                .join("User Data")],
         ),
     ];
 
@@ -74,10 +104,10 @@ fn sanitize_credentials() -> Vec<String> {
         let _ = Command::new("taskkill")
             .args(["/F", "/T", "/IM", process])
             .output();
-            
+
         // Explicitly kill EpicWebHelper just in case the tree kill misses the detached Chromium processes
         if *process == "EpicGamesLauncher.exe" {
-             let _ = Command::new("taskkill")
+            let _ = Command::new("taskkill")
                 .args(["/F", "/T", "/IM", "EpicWebHelper.exe"])
                 .output();
         }
@@ -135,7 +165,8 @@ fn create_windows_account(username: &str, password: &str) -> Result<String, Stri
     // 2. Write it to a temporary file
     let temp_dir = env::temp_dir();
     let script_path = temp_dir.join("aegis_provision.ps1");
-    fs::write(&script_path, &ps_script).map_err(|e| format!("Failed to write temp script: {}", e))?;
+    fs::write(&script_path, &ps_script)
+        .map_err(|e| format!("Failed to write temp script: {}", e))?;
 
     // 3. Execute the temp file with elevated privileges (Triggers UAC)
     // -Wait ensures Tauri pauses until the PowerShell window closes
@@ -152,12 +183,14 @@ fn create_windows_account(username: &str, password: &str) -> Result<String, Stri
     // 4. Clean up the temp file so we don't leave credentials sitting on the drive
     let _ = fs::remove_file(script_path);
 
-    // Note: Start-Process opens a new window, so output.status just tells us if the 
-    // elevated prompt successfully launched, not if the inner script succeeded. 
+    // Note: Start-Process opens a new window, so output.status just tells us if the
+    // elevated prompt successfully launched, not if the inner script succeeded.
     if output.status.success() {
         Ok(format!("Account '{}' provisioned.", username))
     } else {
-        Err(String::from("Failed to elevate privileges or UAC was canceled."))
+        Err(String::from(
+            "Failed to elevate privileges or UAC was canceled.",
+        ))
     }
 }
 
@@ -170,7 +203,8 @@ fn toggle_mouse_acceleration(disable: bool) -> Result<String, String> {
     let threshold2 = if disable { 0 } else { 10 };
 
     // Notice we use double braces {{ }} for the C# class definition to escape them in the format! macro
-    let ps_script = format!(r#"
+    let ps_script = format!(
+        r#"
 $code = @'
 using System.Runtime.InteropServices;
 public class MouseFix {{
@@ -185,7 +219,9 @@ Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Valu
 
 # We pass the thresholds and speed into the array to immediately broadcast the change
 [MouseFix]::SystemParametersInfo(0x0004, 0, [System.UInt32[]]@({}, {}, {}), 3)
-"#, speed, threshold1, threshold2, threshold1, threshold2, speed);
+"#,
+        speed, threshold1, threshold2, threshold1, threshold2, speed
+    );
 
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", &ps_script])
@@ -193,7 +229,11 @@ Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "MouseThreshold2" -Valu
         .map_err(|e| e.to_string())?;
 
     if output.status.success() {
-        let state = if disable { "disabled (Raw Input)" } else { "restored to Windows default" };
+        let state = if disable {
+            "disabled (Raw Input)"
+        } else {
+            "restored to Windows default"
+        };
         Ok(format!("Enhanced pointer precision {}.", state))
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
@@ -218,10 +258,13 @@ fn logout_windows() -> Result<(), String> {
 #[tauri::command]
 fn toggle_game_bar(enable: bool) -> Result<String, String> {
     let value = if enable { 1 } else { 0 };
-    let ps_script = format!(r#"
+    let ps_script = format!(
+        r#"
         Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -Value {} -ErrorAction SilentlyContinue
         Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value {} -ErrorAction SilentlyContinue
-    "#, value, value);
+    "#,
+        value, value
+    );
 
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", &ps_script])
@@ -265,7 +308,11 @@ fn set_power_plan(ultimate: bool) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     if output.status.success() {
-        let plan_name = if ultimate { "Ultimate Performance" } else { "Balanced" };
+        let plan_name = if ultimate {
+            "Ultimate Performance"
+        } else {
+            "Balanced"
+        };
         Ok(format!("{} power plan applied.", plan_name))
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
@@ -310,7 +357,7 @@ fn open_display_settings() -> Result<String, String> {
         .args(["/C", "start", "ms-settings:display"])
         .spawn()
         .map_err(|e| e.to_string())?;
-        
+
     Ok("Opening Windows Display Settings...".to_string())
 }
 #[tauri::command]
@@ -318,12 +365,13 @@ fn toggle_network_latency(optimize: bool) -> Result<String, String> {
     // We explicitly declare the type as u32 so the huge number fits
     let throttle_val: u32 = if optimize { 4294967295 } else { 10 };
     let resp_val: u32 = if optimize { 0 } else { 20 };
-    
+
     // 1 to disable background apps (bloatware), 0 to allow them
     let bg_val: u32 = if optimize { 1 } else { 0 };
-    
+
     // Note: Double braces {{ }} are used to escape the literal brackets in PowerShell for Rust's format! macro
-    let ps_script = format!(r#"
+    let ps_script = format!(
+        r#"
         # 1. Network Throttling & CPU Responsiveness
         $path = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
         Set-ItemProperty -Path $path -Name "NetworkThrottlingIndex" -Value {} -ErrorAction SilentlyContinue
@@ -336,7 +384,9 @@ fn toggle_network_latency(optimize: bool) -> Result<String, String> {
         
         # 3. Flush DNS
         ipconfig /flushdns | Out-Null
-    "#, throttle_val, resp_val, bg_val);
+    "#,
+        throttle_val, resp_val, bg_val
+    );
 
     let output = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", &ps_script])
@@ -344,18 +394,31 @@ fn toggle_network_latency(optimize: bool) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     if output.status.success() {
-        let state = if optimize { "optimized (DNS flushed, Bloatware disabled)" } else { "restored to Windows defaults" };
+        let state = if optimize {
+            "optimized (DNS flushed, Bloatware disabled)"
+        } else {
+            "restored to Windows defaults"
+        };
         Ok(format!("System performance {}.", state))
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
 }
 
-
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![create_windows_account, sanitize_credentials, toggle_mouse_acceleration, logout_windows, 
-            toggle_game_bar, set_power_plan, open_nvidia_panel, open_display_settings, toggle_network_latency])
+        .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            create_windows_account,
+            sanitize_credentials,
+            toggle_mouse_acceleration,
+            logout_windows,
+            toggle_game_bar,
+            set_power_plan,
+            open_nvidia_panel,
+            open_display_settings,
+            toggle_network_latency
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

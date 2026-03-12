@@ -1,6 +1,9 @@
 <script>
 // @ts-nocheck
     import { invoke } from '@tauri-apps/api/core';
+    import { open } from '@tauri-apps/plugin-shell'; // Make sure to run `npm run tauri add shell` if this errors
+    import { fly } from 'svelte/transition';
+    import { elasticOut, quintOut } from 'svelte/easing';
     
     // Account Creation Variables
     let username = '';
@@ -13,6 +16,7 @@
     // Sanitization Variables
     let sanitizationLogs = [];
     let isSanitizing = false;
+    let showIcons = true; // State to trigger the "heaven" animation
 
     // Optimization Variables
     let optimizationStatus = '';
@@ -20,7 +24,6 @@
     let networkOptimized = false;
 
     // Added Chrome and Edge to the visual list! 
-    // (Don't forget to download their SVGs to your /static/icons/ folder)
     const launchers = [
         { name: 'Discord', icon: '/icons/discord.svg' },
         { name: 'Epic Games', icon: '/icons/epicgames.svg' },
@@ -71,16 +74,26 @@
         }
     }
 
+    // --- The "Funny Nuke" Animation Logic ---
     async function handleSanitize() {
         isSanitizing = true;
         sanitizationLogs = ["Initializing sanitization protocol..."];
         
+        // 1. Hide icons to trigger the "Explode" CSS out-animation
+        showIcons = false;
+
+        // Give the "explosion" time to play visually (500ms)
+        await new Promise(r => setTimeout(r, 500));
+
         try {
             const results = await invoke('sanitize_credentials');
             sanitizationLogs = results;
         } catch (error) {
             sanitizationLogs = [`Critical failure: ${error}`];
         } finally {
+            // 2. Sanitation finished, backend released files.
+            // 3. Bring icons back ("Return from Heaven") via Svelte in-transition
+            showIcons = true;
             isSanitizing = false;
         }
     }
@@ -88,7 +101,6 @@
     async function handleMouseFix(disable) {
         optimizationStatus = disable ? "Applying raw mouse input..." : "Restoring default mouse settings...";
         try {
-            // Pass the boolean parameter to the updated Rust command
             optimizationStatus = await invoke('toggle_mouse_acceleration', { disable: disable });
         } catch (error) {
             optimizationStatus = `Error: ${error}`;
@@ -135,6 +147,16 @@
             optimizationStatus = await invoke('toggle_network_latency', { optimize: optimize });
         } catch (error) {
             optimizationStatus = `Error: ${error}`;
+        }
+    }
+
+    // Helper function to handle external links via Tauri Shell
+    async function openExternalLink(url) {
+        try {
+            await open(url);
+            optimizationStatus = `Opened external link: ${url}`;
+        } catch (error) {
+            optimizationStatus = `Error opening link: ${error}`;
         }
     }
 </script>
@@ -185,13 +207,19 @@
         <h2>System Sanitization</h2>
         <p class="description">Closes the displayed apps/launchers and cleans the logged in credentials.</p>
         
-        <div class="launcher-grid">
-            {#each launchers as launcher}
-                <div class="launcher-item">
-                    <img src={launcher.icon} alt="{launcher.name} logo" class="launcher-icon" />
-                    <span>{launcher.name}</span>
-                </div>
-            {/each}
+        <div class="launcher-grid-wrapper">
+            <div class="launcher-grid">
+                {#if showIcons}
+                    {#each launchers as launcher}
+                        <div class="launcher-item" 
+                             class:exploding={!showIcons}
+                             in:fly={{ y: -100, duration: 1500, easing: elasticOut, opacity: 0 }}>
+                            <img src={launcher.icon} alt="{launcher.name} logo" class="launcher-icon" />
+                            <span>{launcher.name}</span>
+                        </div>
+                    {/each}
+                {/if}
+            </div>
         </div>
         
         <button class="warning-btn" on:click={handleSanitize} disabled={isSanitizing} title="Forcefully terminates background processes and wipes session tokens for the listed applications.">
@@ -240,6 +268,18 @@
             
             <button class="launcher-btn nvidia-btn" on:click={handleNvidia} title="Launches the NVIDIA Control Panel to configure 3D settings.">Open NVIDIA Control Panel</button>
             <button class="launcher-btn default-btn" on:click={handleDisplaySettings} title="Opens native Windows Display settings to verify resolution and refresh rate.">Open Display Settings</button>
+            
+            <div class="divider-small"></div>
+
+            <h3>Support & Diagnostics Tools</h3>
+            <div class="support-links">
+                <button class="link-btn" on:click={() => openExternalLink('https://sourceforge.net/projects/makemeadmin/')} title="Opens the official SourceForge download page for MakeMeAdmin self-elevation tool.">
+                    📥 Download MakeMeAdmin Tool
+                </button>
+                <button class="link-btn" on:click={() => openExternalLink('https://www.speedtest.net/')} title="Opens Speedtest by Ookla in your web browser to check network diagnostics.">
+                    🌐 Open Ookla Speedtest
+                </button>
+            </div>
         </div>
 
         {#if optimizationStatus}
@@ -303,7 +343,7 @@
     /* Form Elements */
     .form-group { margin-bottom: 1.5rem; display: flex; flex-direction: column; }
     label { margin-bottom: 0.5rem; font-weight: bold; color: #f8f8f2; font-size: 0.9rem; }
-    input, select { padding: 0.75rem; border-radius: 4px; border: 1px solid #6272a4; background: #44475a; color: white; width: 100%; box-sizing: border-box; transition: 0.2s; }
+    input { padding: 0.75rem; border-radius: 4px; border: 1px solid #6272a4; background: #44475a; color: white; width: 100%; box-sizing: border-box; transition: 0.2s; }
     input:focus { border-color: #bd93f9; outline: none; }
     input:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -332,16 +372,21 @@
     .success-prompt { margin-top: 1rem; padding: 1rem; background: #1e1e24; border: 1px solid #50fa7b; border-radius: 4px; text-align: center; }
     .success-prompt p { color: #50fa7b; font-weight: bold; margin-bottom: 1rem; margin-top: 0; }
 
-    /* Launcher Visuals (Now a 4-column grid for 8 icons) */
-    .launcher-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1rem;
-        margin-bottom: 1.5rem;
+    /* Launcher Visuals & Animation */
+    .launcher-grid-wrapper {
         background: #1e1e24;
         padding: 1rem;
         border-radius: 8px;
         border: 1px solid #44475a;
+        margin-bottom: 1.5rem;
+        min-height: 140px; /* Preserve space when icons are "heavenly" */
+        position: relative;
+        overflow: hidden; /* Contain the explosion */
+    }
+    .launcher-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
     }
     .launcher-item {
         display: flex;
@@ -349,9 +394,23 @@
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
+        will-change: transform, opacity;
+        backface-visibility: hidden;
     }
     .launcher-icon { width: 28px; height: 28px; opacity: 0.8; }
     .launcher-item span { font-size: 0.7rem; color: #f8f8f2; text-align: center; }
+
+    /* EXPLODE (OUT) Animation:
+       Bound to !showIcons. Makes them fade fast, scale huge, and rotate randomly.
+    */
+    .launcher-item.exploding {
+        transition: transform 0.4s ease-out, opacity 0.3s ease-out;
+        opacity: 0 !important;
+        transform: scale(3) rotate(15deg);
+    }
+    /* Add random rotations to different icons for a chaotic explosion */
+    .launcher-item:nth-child(even).exploding { transform: scale(3.5) rotate(-20deg); }
+    .launcher-item:nth-child(3n).exploding { transform: scale(2.8) rotate(45deg) translateY(-20px); }
 
     /* Logs */
     .log-box { margin-top: 1.5rem; padding: 1rem; background: #1e1e24; border-radius: 4px; border: 1px solid #44475a; font-family: 'Consolas', monospace; font-size: 0.85rem; line-height: 1.4;}
@@ -360,7 +419,8 @@
 
     /* Optimization Button Styling */
     .button-stack { display: flex; flex-direction: column; gap: 0.75rem; }
-    
+    .button-stack h3 { color: #ffb86c; font-size: 1rem; margin: 1rem 0 0.25rem 0; border-bottom: 1px solid #44475a; padding-bottom: 0.25rem; }
+
     .launcher-btn { padding: 1rem; font-weight: bold; font-size: 1rem; border-radius: 4px; cursor: pointer; transition: 0.2s; width: 100%; margin: 0; border: 1px solid transparent; }
     .nvidia-btn { background: #1e1e24; color: #50fa7b; border-color: #50fa7b; }
     .nvidia-btn:hover { background: rgba(80, 250, 123, 0.1); }
@@ -396,6 +456,29 @@
 
     .btn-optimized { background: #50fa7b; color: #1e1e24; box-shadow: 0 0 8px rgba(80, 250, 123, 0.2); }
     .btn-optimized:hover { background: #40c963; z-index: 1; transform: translateY(-1px); box-shadow: 0 0 12px rgba(80, 250, 123, 0.4); }
+
+    /* Support Links Section */
+    .support-links {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .link-btn {
+        background: #1e1e24;
+        color: #bd93f9;
+        border: 1px solid #bd93f9;
+        padding: 0.85rem;
+        border-radius: 4px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.2s;
+        text-align: left;
+        font-size: 0.9rem;
+    }
+    .link-btn:hover {
+        background: rgba(189, 147, 249, 0.1);
+        transform: translateX(3px);
+    }
 
     /* Footer Styling */
     .app-footer {
