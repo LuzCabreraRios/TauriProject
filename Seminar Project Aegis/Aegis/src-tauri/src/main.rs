@@ -405,6 +405,48 @@ fn toggle_network_latency(optimize: bool) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn check_system_states() -> Result<Vec<bool>, String> {
+    let ps_script = r#"
+        # Check Mouse (0 means raw input/optimized)
+        $mouse = (Get-ItemProperty -Path 'HKCU:\Control Panel\Mouse' -Name 'MouseSpeed' -ErrorAction SilentlyContinue).MouseSpeed
+        $m = if ($mouse -eq '0') { 'true' } else { 'false' }
+
+        # Check Network (4294967295 means optimized)
+        $net = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -ErrorAction SilentlyContinue).NetworkThrottlingIndex
+        $n = if ($net -eq 4294967295) { 'true' } else { 'false' }
+
+        # Check Game Bar (0 means disabled/optimized)
+        $gb = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -ErrorAction SilentlyContinue).AppCaptureEnabled
+        $g = if ($gb -eq 0) { 'true' } else { 'false' }
+
+        # Check Power Plan (Look for the name instead of the GUID!)
+        $power = (powercfg -getactivescheme) | Out-String
+        $p = if ($power -match 'Ultimate Performance') { 'true' } else { 'false' }
+
+        Write-Output "$m,$n,$g,$p"
+    "#;
+
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", ps_script])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        let result_str = String::from_utf8_lossy(&output.stdout);
+        // Parse the comma-separated string into a Vector of booleans
+        let states: Vec<bool> = result_str
+            .trim()
+            .split(',')
+            .map(|s| s.trim() == "true") // The extra .trim() here prevents PowerShell whitespace bugs
+            .collect();
+        
+        Ok(states)
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -417,7 +459,8 @@ fn main() {
             set_power_plan,
             open_nvidia_panel,
             open_display_settings,
-            toggle_network_latency
+            toggle_network_latency,
+            check_system_states
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

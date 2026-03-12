@@ -1,5 +1,5 @@
 # 🛡️ Project Aegis
-## In Development v0.1.1
+## In Development v0.2.0
 **Project Aegis** is a light-weight Windows utility application designed specifically for shared gaming environments, computer labs, and esports arenas. 
 
 Built with **Tauri, Svelte, and Rust**, Aegis provides a centralized dashboard to provision temporary user accounts, sanitize system credentials between players, and forcefully apply competitive hardware optimizations via the Windows API.
