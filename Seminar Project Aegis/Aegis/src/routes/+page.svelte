@@ -7,7 +7,7 @@
     import { tick, onMount } from 'svelte';
     
     let mounted = false;
-    let activeTab = 'dashboard'; // 'dashboard' or 'optimizations'
+    let activeTab = 'dashboard'; 
 
     // Hardware States
     let mouseOptimized = false;
@@ -15,11 +15,9 @@
     let gameBarOptimized = false; 
     let powerPlanOptimized = false;
 
-    // Fetch existing settings when the app opens!
     onMount(async () => {
         try {
             const states = await invoke('check_system_states');
-            // Expected array order: [Mouse, Network, GameBar, Power]
             if (states && states.length === 4) {
                 mouseOptimized = states[0];
                 networkOptimized = states[1];
@@ -50,6 +48,17 @@
         { name: 'Chrome', icon: '/icons/chrome.svg' },
         { name: 'Edge', icon: '/icons/edge.svg' }
     ];
+
+    // --- NEW: Track which icons are selected. Default to ALL selected. ---
+    let selectedLaunchers = launchers.map(l => l.name);
+
+    function toggleLauncher(name) {
+        if (selectedLaunchers.includes(name)) {
+            selectedLaunchers = selectedLaunchers.filter(n => n !== name); // Remove it
+        } else {
+            selectedLaunchers = [...selectedLaunchers, name]; // Add it back
+        }
+    }
 
     let terminalLogs = [
         { time: new Date().toLocaleTimeString(), message: 'System initialized. Project Aegis standing by.', type: 'info' }
@@ -84,13 +93,19 @@
 
     async function handleSanitize() {
         if (isSanitizing) return;
+        if (selectedLaunchers.length === 0) {
+            addLog("No applications selected for sanitization. Action aborted.", "warning");
+            return;
+        }
+
         isSanitizing = true;
-        addLog("Initializing sanitization protocol. Nuking credentials...", "warning");
+        addLog(`Initializing protocol. Nuking credentials for ${selectedLaunchers.length} app(s)...`, "warning");
         nukeState = 'exploding';
         await new Promise(r => setTimeout(r, 600));
 
         try {
-            const results = await invoke('sanitize_credentials');
+            // NEW: Pass the selected string array to Rust! Tauri automatically converts camelCase to snake_case.
+            const results = await invoke('sanitize_credentials', { selectedApps: selectedLaunchers });
             results.forEach(log => {
                 let type = 'info';
                 if (log.includes('✅')) type = 'success';
@@ -103,7 +118,7 @@
             await new Promise(r => setTimeout(r, 1000));
             nukeState = 'idle';
             isSanitizing = false;
-            addLog("Sanitization complete. System clean.", "success");
+            addLog("Sanitization complete.", "success");
         }
     }
 
@@ -206,13 +221,17 @@
                 <div class="card">
                     <div>
                         <h2>System Sanitization</h2>
-                        <p class="description">Closes the displayed apps/launchers and cleans the logged in credentials.</p>
+                        <p class="description">Click icons to toggle. Clean selected application credentials.</p>
                         
                         <div class="launcher-grid-wrapper">
                             <div class="launcher-grid">
                                 {#each launchers as launcher, i}
-                                    <div class="launcher-item {nukeState}" 
-                                         style="--delay: {i * 0.05}s; --x: {i % 2 === 0 ? 1 : -1}; --y: {i % 3 === 0 ? -1 : 1};">
+                                    <div role="button"
+                                         tabindex="0"
+                                         class="launcher-item {nukeState} {selectedLaunchers.includes(launcher.name) ? 'selected' : 'unselected'}" 
+                                         style="--delay: {i * 0.05}s; --x: {i % 2 === 0 ? 1 : -1}; --y: {i % 3 === 0 ? -1 : 1};"
+                                         on:click={() => toggleLauncher(launcher.name)}
+                                         on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleLauncher(launcher.name)}>
                                         <img src={launcher.icon} alt="{launcher.name} logo" class="launcher-icon" />
                                         <span>{launcher.name}</span>
                                     </div>
@@ -268,7 +287,7 @@
                                 <button class="launcher-btn nvidia-btn" on:click={handleNvidia}>Open NVIDIA Control Panel</button>
                                 <button class="launcher-btn default-btn" on:click={handleDisplaySettings}>Open Display Settings</button>
                                 
-                                
+                                <div class="divider-small"></div>
 
                                 <h3>Support & Diagnostics</h3>
                                 <div class="support-links">
@@ -363,15 +382,31 @@
     .success-prompt { padding: 1rem; background: #1e1e24; border: 1px solid #50fa7b; border-radius: 4px; text-align: center; }
     .success-prompt p { color: #50fa7b; font-weight: bold; margin-bottom: 1rem; margin-top: 0; }
 
-    /* Launchers */
+    /* --- NEW: Interactive Launchers --- */
     .launcher-grid-wrapper { background: #1e1e24; padding: 1rem; border-radius: 8px; border: 1px solid #44475a; margin-bottom: 1.5rem; min-height: 140px; position: relative; overflow: hidden; }
-    .launcher-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
-    .launcher-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; will-change: transform, opacity; backface-visibility: hidden; }
-    .launcher-icon { width: 28px; height: 28px; opacity: 0.8; }
-    .launcher-item span { font-size: 0.7rem; color: #f8f8f2; text-align: center; }
-    .launcher-item.idle { opacity: 1; transform: scale(1) translate(0, 0); }
-    .launcher-item.exploding { animation: explodeAnim 0.6s cubic-bezier(0.1, 0.9, 0.2, 1) forwards; }
+    .launcher-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+    
+    .launcher-item { 
+        display: flex; flex-direction: column; align-items: center; justify-content: center; 
+        gap: 0.5rem; will-change: transform, opacity; backface-visibility: hidden; 
+        cursor: pointer; padding: 0.5rem; border-radius: 6px; border: 1px solid transparent;
+        transition: transform 0.2s, background 0.2s, filter 0.3s;
+    }
+    
+    .launcher-item:hover { transform: translateY(-2px); background: rgba(255,255,255,0.05); }
+    
+    /* Grayscale out the unselected ones */
+    .launcher-item.unselected { filter: grayscale(100%) opacity(0.4); }
+    
+    /* Highlight the selected ones with a subtle green glow */
+    .launcher-item.selected { background: rgba(80, 250, 123, 0.05); border-color: rgba(80, 250, 123, 0.2); }
+    
+    .launcher-icon { width: 28px; height: 28px; opacity: 0.9; }
+    .launcher-item span { font-size: 0.7rem; color: #f8f8f2; text-align: center; font-weight: bold; }
+    
+    .launcher-item.exploding { animation: explodeAnim 0.6s cubic-bezier(0.1, 0.9, 0.2, 1) forwards; pointer-events: none;}
     .launcher-item.returning { opacity: 0; animation: heavenReturn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; animation-delay: var(--delay); }
+    
     @keyframes explodeAnim { 0% { transform: scale(1) translate(0, 0) rotate(0deg); opacity: 1; } 100% { transform: scale(2.5) translate(calc(var(--x) * 60px), calc(var(--y) * 60px)) rotate(calc(var(--x) * 45deg)); opacity: 0; } }
     @keyframes heavenReturn { 0% { transform: translateY(-80px) scale(0.8); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
 
