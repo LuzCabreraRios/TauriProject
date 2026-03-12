@@ -3,7 +3,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { open } from '@tauri-apps/plugin-shell'; // Make sure to run `npm run tauri add shell` if this errors
     import { fly } from 'svelte/transition';
-    import { elasticOut, quintOut } from 'svelte/easing';
+    import { elasticIn, elasticOut, quintOut } from 'svelte/easing';
     
     // Account Creation Variables
     let username = '';
@@ -22,6 +22,9 @@
     let optimizationStatus = '';
     let gameBarEnabled = false; 
     let networkOptimized = false;
+
+    // --- State for our custom CSS animation ---
+    let nukeState = 'idle'; // Can be 'idle', 'exploding', or 'returning'
 
     // Added Chrome and Edge to the visual list! 
     const launchers = [
@@ -75,29 +78,79 @@
     }
 
     // --- The "Funny Nuke" Animation Logic ---
+// --- PRODUCTION VERSION: Armed and ready ---
     async function handleSanitize() {
+        if (isSanitizing) return; // Prevent spam-clicking the button
+        
         isSanitizing = true;
         sanitizationLogs = ["Initializing sanitization protocol..."];
         
-        // 1. Hide icons to trigger the "Explode" CSS out-animation
-        showIcons = false;
+        // 1. Trigger the CSS Explosion
+        nukeState = 'exploding';
 
-        // Give the "explosion" time to play visually (500ms)
-        await new Promise(r => setTimeout(r, 500));
+        // Wait 600ms for the CSS explosion animation to finish playing visually
+        await new Promise(r => setTimeout(r, 600));
 
         try {
+            // 2. The REAL Backend Call 
+            // The app will wait here while Rust forcefully closes apps and deletes folders
             const results = await invoke('sanitize_credentials');
             sanitizationLogs = results;
+            
         } catch (error) {
             sanitizationLogs = [`Critical failure: ${error}`];
         } finally {
-            // 2. Sanitation finished, backend released files.
-            // 3. Bring icons back ("Return from Heaven") via Svelte in-transition
-            showIcons = true;
+            // 3. Trigger the CSS Return from Heaven
+            nukeState = 'returning';
+            
+            // Wait 1 second for the bouncy return animation to finish
+            await new Promise(r => setTimeout(r, 1000));
+            
+            // 4. Reset state so the button can be used again
+            nukeState = 'idle';
             isSanitizing = false;
         }
     }
 
+//     //COMMENT FUNTION AFTER TESTING
+// // --- TESTING VERSION: Does NOT delete real credentials ---
+//     async function handleSanitize() {
+//         if (isSanitizing) return; // Prevent spam-clicking
+        
+//         isSanitizing = true;
+//         sanitizationLogs = ["Initializing sanitization protocol..."];
+        
+//         // 1. Trigger the CSS Explosion
+//         nukeState = 'exploding';
+
+//         // Wait 600ms for the CSS explosion animation to finish playing
+//         await new Promise(r => setTimeout(r, 600));
+
+//         try {
+//             // Fake backend work
+//             await new Promise(r => setTimeout(r, 2000));
+            
+//             sanitizationLogs = [
+//                 "✅ Discord sanitized successfully.",
+//                 "✅ Steam sanitized successfully.",
+//                 "⚠️ Epic Games not found (already clean)."
+//             ];
+            
+//         } catch (error) {
+//             sanitizationLogs = [`Critical failure: ${error}`];
+//         } finally {
+//             // 2. Trigger the CSS Return from Heaven
+//             nukeState = 'returning';
+            
+//             // Wait 1 second for the bouncy return animation to finish
+//             await new Promise(r => setTimeout(r, 1000));
+            
+//             // 3. Reset to normal
+//             nukeState = 'idle';
+//             isSanitizing = false;
+//         }
+//     }
+    
     async function handleMouseFix(disable) {
         optimizationStatus = disable ? "Applying raw mouse input..." : "Restoring default mouse settings...";
         try {
@@ -209,16 +262,13 @@
         
         <div class="launcher-grid-wrapper">
             <div class="launcher-grid">
-                {#if showIcons}
-                    {#each launchers as launcher}
-                        <div class="launcher-item" 
-                             class:exploding={!showIcons}
-                             in:fly={{ y: -100, duration: 1500, easing: elasticOut, opacity: 0 }}>
-                            <img src={launcher.icon} alt="{launcher.name} logo" class="launcher-icon" />
-                            <span>{launcher.name}</span>
-                        </div>
-                    {/each}
-                {/if}
+                {#each launchers as launcher, i}
+                    <div class="launcher-item {nukeState}" 
+                         style="--delay: {i * 0.05}s; --x: {i % 2 === 0 ? 1 : -1}; --y: {i % 3 === 0 ? -1 : 1};">
+                        <img src={launcher.icon} alt="{launcher.name} logo" class="launcher-icon" />
+                        <span>{launcher.name}</span>
+                    </div>
+                {/each}
             </div>
         </div>
         
@@ -238,7 +288,6 @@
             </div>
         {/if}
     </div>
-
     <div class="card">
         <h2>Optimizations</h2>
         <p class="description">Configure competitive gaming standards.</p>
@@ -400,17 +449,7 @@
     .launcher-icon { width: 28px; height: 28px; opacity: 0.8; }
     .launcher-item span { font-size: 0.7rem; color: #f8f8f2; text-align: center; }
 
-    /* EXPLODE (OUT) Animation:
-       Bound to !showIcons. Makes them fade fast, scale huge, and rotate randomly.
-    */
-    .launcher-item.exploding {
-        transition: transform 0.4s ease-out, opacity 0.3s ease-out;
-        opacity: 0 !important;
-        transform: scale(3) rotate(15deg);
-    }
-    /* Add random rotations to different icons for a chaotic explosion */
-    .launcher-item:nth-child(even).exploding { transform: scale(3.5) rotate(-20deg); }
-    .launcher-item:nth-child(3n).exploding { transform: scale(2.8) rotate(45deg) translateY(-20px); }
+
 
     /* Logs */
     .log-box { margin-top: 1.5rem; padding: 1rem; background: #1e1e24; border-radius: 4px; border: 1px solid #44475a; font-family: 'Consolas', monospace; font-size: 0.85rem; line-height: 1.4;}
@@ -500,5 +539,50 @@
         width: 24px;
         height: 24px;
         filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(93deg) brightness(103%) contrast(103%);
+    }
+    /* --- THE NUKE ANIMATIONS --- */
+    
+    /* Default state: visible and normal */
+    .launcher-item.idle {
+        opacity: 1;
+        transform: scale(1) translate(0, 0);
+    }
+
+    /* Exploding state: trigger the violent outward animation */
+    .launcher-item.exploding {
+        /* forwards ensures it stays invisible at the end of the animation */
+        animation: explodeAnim 0.6s cubic-bezier(0.1, 0.9, 0.2, 1) forwards; 
+    }
+
+    /* Returning state: trigger the bouncy drop-in from above */
+    .launcher-item.returning {
+        opacity: 0; /* Start invisible before the delay kicks in */
+        animation: heavenReturn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        animation-delay: var(--delay); /* Stagger the drops! */
+    }
+
+    /* Keyframes for the Explosion */
+    @keyframes explodeAnim {
+        0% { 
+            transform: scale(1) translate(0, 0) rotate(0deg); 
+            opacity: 1; 
+        }
+        100% { 
+            /* Uses the custom --x and --y variables from the HTML to scatter them */
+            transform: scale(2.5) translate(calc(var(--x) * 60px), calc(var(--y) * 60px)) rotate(calc(var(--x) * 45deg)); 
+            opacity: 0; 
+        }
+    }
+
+    /* Keyframes for the Return */
+    @keyframes heavenReturn {
+        0% { 
+            transform: translateY(-80px) scale(0.8); 
+            opacity: 0; 
+        }
+        100% { 
+            transform: translateY(0) scale(1); 
+            opacity: 1; 
+        }
     }
 </style>
