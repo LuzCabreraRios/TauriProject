@@ -21,7 +21,7 @@ Built with **Tauri, Svelte, and Rust**, Aegis provides a centralized dashboard t
 * **One-Click Credential Nuke:** Forcefully terminates background processes and wipes local `AppData` session tokens for major platforms to ensure zero account overlap between players.
 * **Supported Platforms:** Discord, Epic Games, Steam, Spotify, Battle.net, Riot Games, Google Chrome, and Microsoft Edge.
 
-### ⚡ Hardware Optimizations
+### ⚡  Optimizations
 * **Raw Mouse Input:** Toggles Windows "Enhanced Pointer Precision" in the registry for 1:1 competitive aiming.
 * **Network & CPU Priority:** Flushes DNS, disables background UWP bloatware, and removes Windows network throttling to prioritize game packet delivery.
 * **Overlay Management:** Safely disables the Xbox Game Bar and background DVR services to free up system resources.
