@@ -4,7 +4,7 @@
 
 Built with **Tauri, Svelte, and Rust**, Aegis provides a centralized dashboard to provision temporary user accounts, sanitize system credentials between players, and forcefully apply competitive hardware optimizations via the Windows API.
 
-![Project Aegis Dashboard](https://img.shields.io/badge/Version-0.1.0-50fa7b?style=for-the-badge)
+![Project Aegis Dashboard](https://img.shields.io/badge/Version-0.2.1-50fa7b?style=for-the-badge)
 ![Tauri](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)
 ![Svelte](https://img.shields.io/badge/Svelte-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
